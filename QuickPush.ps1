@@ -19,4 +19,4 @@ git add .
 git commit -m "null" --allow-empty
 
 # 5. Push to the remote main branch
-git push origin main
+git push origin master
