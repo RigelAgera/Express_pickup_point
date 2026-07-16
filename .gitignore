@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# 编译产物
+*.exe
+*.out
+*.o
+*.obj
+*.ilk
+*.pdb
+
+# IDE
+.vs/
+*.user
+*.suo
