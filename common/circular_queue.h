@@ -1,8 +1,9 @@
+// 循环队列，固定容量，用于维护驿站的待配送任务队列
+// 其实用<queue>更好用，但是文档中提到了要实现这个数据结构，就有了这份手写板
 #pragma once
 #include <vector>
 #include <stdexcept>
 
-// 循环队列，固定容量，用于维护驿站的待配送任务队列
 template <typename T>
 class CircularQueue
 {

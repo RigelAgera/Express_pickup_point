@@ -1,3 +1,4 @@
+// AI写的，据说是辅助函数
 #pragma once
 #include "graph.h"
 #include "dijkstra.h"
