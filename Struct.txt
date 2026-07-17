@@ -1,0 +1,70 @@
+卷 Data 的文件夹 PATH 列表
+卷序列号为 000000A2 147B:5418
+D:.
+│  .gitignore   // 忽略某些文件
+│  main_completed.cpp   // 完整版主程序
+│  main_required.cpp    // 1-3必做版主程序
+│  README.md    // 课程包内容
+│  Struct.txt   // 此文件
+│  数据格式说明.md  // 课程包内容
+│  项目说明.md  // 课程包内容
+│  
+├─AI_USAGE
+│      AI_USAGE.md  // AI使用说明文档
+│      image-1.png  // AI聊天记录的截屏
+│      image-2.png
+│      image-3.png
+│      image-4.png
+│      image.png
+│      
+├─common
+│      circular_queue.h // 循环队列
+│      dijkstra.h   // 单源最短路径
+│      graph.h  // 图结构
+│      input_reader.cpp // 文件读入
+│      input_reader.h   // 文件读入接口声明
+│      min_heap.h   // 最小堆
+│      models.h     // 小车和包裹对象，未完善
+│      output_writer.cpp    // 写文件，md格式可视化，和数据示例中 预期结果.md 格式相同
+│      output_writer.h  
+│      schedule_utils.h     // 辅助函数们
+│      
+├─Report    // 实验报告
+│      Report.md
+│      
+├─task  // 文档要求的题目
+│      task1.cpp
+│      task1.h
+│      task2.cpp
+│      task2.h
+│      task3.cpp
+│      task3.h
+│      task4.cpp
+│      task4.h
+│      task5.cpp
+│      task5.h
+│      task6.cpp
+│      task6.h
+│      
+└─测试数据      // 课程包内容
+    ├─测试1
+    │      car.txt
+    │      map.txt
+    │      packages.txt
+    │      
+    ├─测试2
+    │      car.txt
+    │      map.txt
+    │      packages.txt
+    │      
+    ├─测试3
+    │      car.txt
+    │      map.txt
+    │      packages.txt
+    │      
+    └─示例
+            car.txt
+            map.txt
+            packages.txt
+            result.md
+            预期结果.md
