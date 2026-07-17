@@ -18,6 +18,4 @@ public:
     // 执行 Dijkstra，返回结果数据
     static Task1Result solve(const input_data& data);
 
-    //  将结果格式化为可读字符串
-    //  static std::string format(const Task1Result& r, const std::string& folder);
 };

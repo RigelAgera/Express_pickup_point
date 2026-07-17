@@ -1,6 +1,5 @@
-卷 Data 的文件夹 PATH 列表
-卷序列号为 000000A2 147B:5418
-D:.
+并没有全部写完，其中很多是空文件
+
 │  .gitignore   // 忽略某些文件
 │  main_completed.cpp   // 完整版主程序
 │  main_required.cpp    // 1-3必做版主程序
