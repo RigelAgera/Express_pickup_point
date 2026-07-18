@@ -15,8 +15,8 @@ struct node
 struct edge
 {
     node u, v;
-    double w;
-    edge(node a, node b, int c) : u(a), v(b), w(c) {}
+    double w;   // 边权，大概也是路的长度
+    edge(node a, node b, double c) : u(a), v(b), w(c) {}
 
 };
 
