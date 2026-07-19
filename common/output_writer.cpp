@@ -94,4 +94,131 @@ void task2(const Task2Result& r, const input_data& data, std::ofstream& out)
     }
 }
 
+void task3(const Task3Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 三、T3 带容量运送成本\n\n";
+    out << "- 总运送成本：**" << std::fixed << std::setprecision(4) << r.sumCost << "**\n";
+    out << "- 超时包裹数：**" << r.exTime << "**\n";
+    out << "- 趟数：**" << r.trips.size() << "**\n\n";
+
+    for (size_t t_idx = 0; t_idx < r.trips.size(); ++t_idx)
+    {
+        const auto& trip = r.trips[t_idx];
+        out << "### 第 " << (t_idx + 1) << " 趟\n\n";
+        out << "- 出发时刻：**" << std::fixed << std::setprecision(4) << trip.depart_time << "**\n";
+        out << "- 返回时刻：**" << std::fixed << std::setprecision(4) << trip.end_time << "**\n";
+        out << "- 路线：";
+        for (size_t i = 0; i < trip.route.size(); ++i)
+        {
+            if (i > 0) out << " → ";
+            out << trip.route[i];
+        }
+        out << "\n";
+        out << "- 配送包裹：\n\n";
+        out << "| 包裹ID | 目的地 | 重量 | Deadline | 送达时刻 | 是否超时 |\n";
+        out << "|--------|--------|------|----------|----------|----------|\n";
+
+        for (size_t pi = 0; pi < trip.pkg_ids.size(); ++pi)
+        {
+            int pid = trip.pkg_ids[pi];
+            const auto& p = data.packages[pid];
+            double deliver = (pi < trip.deliver_time.size()) ? trip.deliver_time[pi] : -1.0;
+            bool late = deliver > p.deadline + 1e-9;
+            out << "| " << pid + 1
+                << " | " << p.dest
+                << " | " << std::fixed << std::setprecision(1) << p.weight
+                << " | " << std::fixed << std::setprecision(4) << p.deadline
+                << " | " << std::fixed << std::setprecision(4) << deliver
+                << " | " << (late ? "是" : "否")
+                << " |\n";
+        }
+        out << "\n";
+    }
+}
+
+void task4(const Task4Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 四、T4 退货回收（GA 近似）\n\n";
+
+    if (r.destination.empty())
+    {
+        out << "- 回收点数量：**0**\n";
+        out << "- 访问顺序（不含 0）：无\n\n";
+        return;
+    }
+
+    AllPairResult ap = all_pairs_dijkstra(data.g);
+    double total_len = ap.dist[0][r.destination[0]];
+    for (size_t i = 0; i + 1 < r.destination.size(); ++i)
+        total_len += ap.dist[r.destination[i]][r.destination[i + 1]];
+    total_len += ap.dist[r.destination.back()][0];
+
+    out << "- 回收点数量：**" << r.destination.size() << "**\n";
+    out << "- 访问顺序（不含 0）：";
+    for (size_t i = 0; i < r.destination.size(); ++i)
+    {
+        if (i > 0) out << " → ";
+        out << r.destination[i];
+    }
+    out << "\n";
+    out << "- 回路总距离（0 出发并回到 0）：**" << std::fixed << std::setprecision(4)
+        << total_len << "**\n\n";
+}
+
+void task5(const Task5Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 五、T5 双车协同配送\n\n";
+    out << "- 总运送成本：**" << std::fixed << std::setprecision(4) << r.sumCost << "**\n";
+    out << "- 超时包裹数：**" << r.exTime << "**\n";
+    out << "- 车1趟数：**" << r.trips1.size() << "**\n";
+    out << "- 车2趟数：**" << r.trips2.size() << "**\n\n";
+
+    auto write_car = [&](const std::vector<Trip>& trips, int car_idx)
+    {
+        out << "### 车" << car_idx << " 配送详情\n\n";
+        if (trips.empty())
+        {
+            out << "- 无配送趟次\n\n";
+            return;
+        }
+
+        for (size_t t_idx = 0; t_idx < trips.size(); ++t_idx)
+        {
+            const auto& trip = trips[t_idx];
+            out << "#### 第 " << (t_idx + 1) << " 趟\n\n";
+            out << "- 出发时刻：**" << std::fixed << std::setprecision(4) << trip.depart_time << "**\n";
+            out << "- 返回时刻：**" << std::fixed << std::setprecision(4) << trip.end_time << "**\n";
+            out << "- 路线：";
+            for (size_t i = 0; i < trip.route.size(); ++i)
+            {
+                if (i > 0) out << " → ";
+                out << trip.route[i];
+            }
+            out << "\n";
+            out << "- 配送包裹：\n\n";
+            out << "| 包裹ID | 目的地 | 重量 | Deadline | 送达时刻 | 是否超时 |\n";
+            out << "|--------|--------|------|----------|----------|----------|\n";
+
+            for (size_t pi = 0; pi < trip.pkg_ids.size(); ++pi)
+            {
+                int pid = trip.pkg_ids[pi];
+                const auto& p = data.packages[pid];
+                double deliver = (pi < trip.deliver_time.size()) ? trip.deliver_time[pi] : -1.0;
+                bool late = deliver > p.deadline + 1e-9;
+                out << "| " << pid + 1
+                    << " | " << p.dest
+                    << " | " << std::fixed << std::setprecision(1) << p.weight
+                    << " | " << std::fixed << std::setprecision(4) << p.deadline
+                    << " | " << std::fixed << std::setprecision(4) << deliver
+                    << " | " << (late ? "是" : "否")
+                    << " |\n";
+            }
+            out << "\n";
+        }
+    };
+
+    write_car(r.trips1, 1);
+    write_car(r.trips2, 2);
+}
+
 } // namespace output

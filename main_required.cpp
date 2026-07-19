@@ -93,8 +93,7 @@ int main(int argc, char* argv[])
             input_data d3 = data;
             for (auto& p : d3.packages) p.arrive = 0.0;
             auto r = Task3::solve(d3);
-            // TODO: output::task3(r, out);
-            std::cerr << "[提示] T3 输出函数待实现\n";
+            output::task3(r, d3, out);
 #else
             std::cerr << "[跳过] T3: task3.h 未包含\n";
 #endif

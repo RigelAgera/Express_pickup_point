@@ -105,12 +105,7 @@ int main(int argc, char* argv[])
             for (auto& p : d3.packages) p.arrive = 0.0;
             Task3 solver(d3);
             auto r = solver.solve();
-
-            // output_writer 暂无 task3 专用接口，这里直接输出核心指标
-            out << "\n## 三、T3 带容量运送成本\n\n";
-            out << "- 总运送成本：**" << r.sumCost << "**\n";
-            out << "- 超时包裹数：**" << r.exTime << "**\n";
-            out << "- 趟数：**" << r.trips.size() << "**\n\n";
+            output::task3(r, d3, out);
         }
 
         // T4 —— 退货回收（默认使用包裹目的地去重集合作为回收点）
@@ -125,36 +120,17 @@ int main(int argc, char* argv[])
 
             Task4 solver(data);
             auto r = solver.solve(return_nodes);
-
-            out << "\n## 四、T4 退货回收（GA 近似）\n\n";
-            out << "- 回收点数量：**" << return_nodes.size() << "**\n";
-            out << "- 访问顺序（不含 0）：";
-            if (r.destination.empty())
-            {
-                out << "无\n\n";
-            }
-            else
-            {
-                for (size_t i = 0; i < r.destination.size(); ++i)
-                {
-                    if (i) out << " -> ";
-                    out << r.destination[i];
-                }
-                out << "\n\n";
-            }
+            output::task4(r, data, out);
         }
 
-        // T5 —— 双车协同配送
+        // T5 —— 双车协同配送（arrive 清零，包裹即时可用）
         if (tasks.count(5))
         {
-            Task5 solver(data);
+            input_data d5 = data;
+            for (auto& p : d5.packages) p.arrive = 0.0;
+            Task5 solver(d5);
             auto r = solver.solve();
-
-            out << "\n## 五、T5 双车协同配送\n\n";
-            out << "- 总运送成本：**" << r.sumCost << "**\n";
-            out << "- 超时包裹数：**" << r.exTime << "**\n";
-            out << "- 车1趟数：**" << r.trips1.size() << "**\n";
-            out << "- 车2趟数：**" << r.trips2.size() << "**\n\n";
+            output::task5(r, d5, out);
         }
 
         out.close();
