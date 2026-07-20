@@ -1,7 +1,8 @@
+
 // T3带容量运送成本
 // 约束：Si=0, 容量 w_lim, 有 deadline Ti
-// 算法: EDD贪心分趟 + heaviest-first趟内排序 + SA优化
-// 评估: 字典序 (超时数, 总成本)，优先压超时、同超时下压成本
+// 算法: EDD贪心分趟 + 双初解择优(nearest/heaviest) + 多邻域SA优化
+// 评估: 用大 M 加权评分近似字典序，优先压超时、同超时下压成本
 #pragma once
 #include "../common/input_reader.h"
 #include "../common/schedule_utils.h"
@@ -30,22 +31,21 @@ private:
     std::mt19937 rng;   // 伪随机数生成器
 
     // ---- 辅助 ----
-    std::vector<int> unique_dests(const std::vector<int>& pkg_ids); // 返回目的地？
-    double trip_weight(const std::vector<int>& pkg_ids);    // 返回一趟所有包裹的重量之和
+    std::vector<int> unique_dests(const std::vector<int>& pkg_ids); // 返回一趟涉及的去重目的地
+    double trip_weight(const std::vector<int>& pkg_ids);             // 返回一趟所有包裹的重量之和
     bool try_random_move(std::vector<std::vector<int>>& trip_plans,
-                         std::vector<std::vector<int>>& dest_orders);   // 邻域移动
+                         std::vector<std::vector<int>>& dest_orders); // 多邻域随机扰动
 
-    // ---- 趟内排序: 最重优先 ----
+    // ---- 趟内排序: 按目的地总重量降序 ----
     std::vector<int> heaviest_dest_order(const std::vector<int>& pkg_ids);
 
-    // ---- 评估: 返回 (超时数, 总成本) 字典序 ----
-    // 需要送达时间，目的地顺序，trip_plans是何意味？
+    // ---- 评估: 返回 (超时数, 总成本) ----
     std::pair<int, double> evaluate_solution(
-        const std::vector<std::vector<int>>& trip_plans,    // 每趟的包裹 id，无序
-        const std::vector<std::vector<int>>& dest_orders,
+        const std::vector<std::vector<int>>& trip_plans,     // 每趟承运的包裹 id 集合
+        const std::vector<std::vector<int>>& dest_orders,    // 每趟访问目的地顺序
         std::vector<double>& deliver_time);
 
-    // ---- 贪心初解: 按 deadline 升序贪心装车 ----
+    // ---- 贪心初解: 按 deadline 升序贪心装车，先生成 heaviest-first 顺序 ----
     void greedy_init(std::vector<std::vector<int>>& trip_plans,
                      std::vector<std::vector<int>>& dest_orders);
 

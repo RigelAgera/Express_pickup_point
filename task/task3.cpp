@@ -1,7 +1,7 @@
 // T3: 带容量运送成本，逻辑基本同 T2, 但 S_i = 0, 有 deadline T_i
 // 约束: S_i = 0, 容量 w_lim, 有 deadline T_i
-// 算法: EDD 贪心分趟 + heaviest-first 趟内排序 + SA 优化
-// 评估: 加权评分 score = M * overtime + total_cost, M 足够大使超时主导
+// 算法: EDD 贪心分趟 + 双初解择优(nearest/heaviest) + 多邻域 SA 优化
+// 评估: 加权评分 score = M * overtime + total_cost, 用大 M 近似字典序优先压超时
 #include "task3.h"
 #include "../common/dijkstra.h"
 #include "../common/min_heap.h"
@@ -135,7 +135,7 @@ std::pair<int, double> Task3::evaluate_solution(
 // EDD (Earliest Deadline First) 贪心分趟:
 //   1. 所有包裹按 T_i 升序排序
 //   2. 依次贪心装车 (容量约束), 装满即封趟
-//   3. 每趟内部用 heaviest_dest_order 排目的地
+//   3. 先生成 heaviest-first 趟内顺序，solve() 中再与 nearest-first 比较择优
 //
 // $$\text{order} = \operatorname{sort\_asc}(\text{pkgs},\; \text{key} = T_i)$$
 void Task3::greedy_init(
@@ -180,16 +180,81 @@ void Task3::greedy_init(
 // 随机尝试一种邻域移动, 修改 trip_plans / dest_orders
 // 成功返回 true, 无法产生合法移动返回 false
 //
-// 三种操作 (等概率):
-//   op=0: 跨趟搬包裹 (move)
-//   op=1: 趟内交换两个目的地 (swap)
-//   op=2: 趟内 2-opt (reverse sub-path)
+// 六种操作 (等概率):
+//   op=0: 跨趟搬单个包裹 (relocate)
+//   op=1: 跨趟交换两个包裹 (swap-between-trips)
+//   op=2: 跨趟搬运同一目的地的一组包裹 (relocate-block)
+//   op=3: 调整整趟先后顺序 (swap-trips)
+//   op=4: 趟内交换两个目的地 (swap-in-trip)
+//   op=5: 趟内 2-opt (reverse sub-path)
 bool Task3::try_random_move(
     vector<vector<int>>& trip_plans,
     vector<vector<int>>& dest_orders)
 {
     int n_trip = (int)trip_plans.size();
-    int op = std::uniform_int_distribution<int>(0, 2)(rng);
+    int op = std::uniform_int_distribution<int>(0, 5)(rng);
+
+    // 跨趟变动后尽量保留既有目的地顺序，仅对新增目的地做增量补全
+    auto refresh_dest_order = [&](int t)
+    {
+        if (t < 0 || t >= (int)trip_plans.size()) return;
+        if (trip_plans[t].empty())
+        {
+            dest_orders[t].clear();
+            return;
+        }
+
+        vector<int> dests = unique_dests(trip_plans[t]);
+        vector<int> order;
+        vector<bool> used(dests.size(), false);
+
+        for (int d : dest_orders[t])
+        {
+            for (size_t i = 0; i < dests.size(); ++i)
+            {
+                if (!used[i] && dests[i] == d)
+                {
+                    order.push_back(d);
+                    used[i] = true;
+                    break;
+                }
+            }
+        }
+
+        int cur = order.empty() ? 0 : order.back();
+        while (order.size() < dests.size())
+        {
+            int best_idx = -1;
+            double best_dist = std::numeric_limits<double>::infinity();
+            double best_weight = -1.0;
+
+            for (size_t i = 0; i < dests.size(); ++i)
+            {
+                if (used[i]) continue;
+
+                double tw = 0.0;
+                for (int pid : trip_plans[t])
+                    if (pkgs[pid].dest == dests[i])
+                        tw += pkgs[pid].weight;
+
+                double dist = ap.dist[cur][dests[i]];
+                if (best_idx == -1 ||
+                    dist < best_dist - 1e-9 ||
+                    (std::fabs(dist - best_dist) <= 1e-9 && tw > best_weight + 1e-9))
+                {
+                    best_idx = (int)i;
+                    best_dist = dist;
+                    best_weight = tw;
+                }
+            }
+
+            used[best_idx] = true;
+            cur = dests[best_idx];
+            order.push_back(cur);
+        }
+
+        dest_orders[t] = order;
+    };
 
     if (op == 0 && n_trip >= 2)
     {
@@ -210,8 +275,8 @@ bool Task3::try_random_move(
 
         trip_plans[src].erase(trip_plans[src].begin() + pos);
         trip_plans[dst].push_back(pid);
-        dest_orders[src] = heaviest_dest_order(trip_plans[src]);
-        dest_orders[dst] = heaviest_dest_order(trip_plans[dst]);
+        refresh_dest_order(src);
+        refresh_dest_order(dst);
         if (trip_plans[src].empty())
         {
             trip_plans.erase(trip_plans.begin() + src);
@@ -219,7 +284,90 @@ bool Task3::try_random_move(
         }
         return true;
     }
-    else if (op == 1 && n_trip >= 1)
+    else if (op == 1 && n_trip >= 2)
+    {
+        // 跨趟交换两个包裹
+        int a = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
+        int b;
+        do { b = std::uniform_int_distribution<int>(0, n_trip - 1)(rng); }
+        while (b == a);
+
+        if (trip_plans[a].empty() || trip_plans[b].empty()) return false;
+
+        int ia = std::uniform_int_distribution<int>(0, (int)trip_plans[a].size() - 1)(rng);
+        int ib = std::uniform_int_distribution<int>(0, (int)trip_plans[b].size() - 1)(rng);
+        int pa = trip_plans[a][ia];
+        int pb = trip_plans[b][ib];
+        double wa = pkgs[pa].weight;
+        double wb = pkgs[pb].weight;
+
+        double new_wa = trip_weight(trip_plans[a]) - wa + wb;
+        double new_wb = trip_weight(trip_plans[b]) - wb + wa;
+        if (new_wa > c.capacity + 1e-9 || new_wb > c.capacity + 1e-9)
+            return false;
+
+        std::swap(trip_plans[a][ia], trip_plans[b][ib]);
+        refresh_dest_order(a);
+        refresh_dest_order(b);
+        return true;
+    }
+    else if (op == 2 && n_trip >= 2)
+    {
+        // 跨趟搬运同一目的地的一组包裹
+        int src = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
+        vector<int> src_dests = unique_dests(trip_plans[src]);
+        if (src_dests.empty()) return false;
+
+        int d = src_dests[std::uniform_int_distribution<int>(0, (int)src_dests.size() - 1)(rng)];
+        vector<int> moved;
+        double moved_weight = 0.0;
+        for (int pid : trip_plans[src])
+        {
+            if (pkgs[pid].dest == d)
+            {
+                moved.push_back(pid);
+                moved_weight += pkgs[pid].weight;
+            }
+        }
+        if (moved.empty() || moved.size() == trip_plans[src].size())
+            return false;
+
+        int dst;
+        do { dst = std::uniform_int_distribution<int>(0, n_trip - 1)(rng); }
+        while (dst == src);
+
+        if (trip_weight(trip_plans[dst]) + moved_weight > c.capacity + 1e-9)
+            return false;
+
+        vector<int> kept;
+        kept.reserve(trip_plans[src].size() - moved.size());
+        for (int pid : trip_plans[src])
+            if (pkgs[pid].dest != d)
+                kept.push_back(pid);
+
+        trip_plans[src] = kept;
+        trip_plans[dst].insert(trip_plans[dst].end(), moved.begin(), moved.end());
+        refresh_dest_order(src);
+        refresh_dest_order(dst);
+
+        if (trip_plans[src].empty())
+        {
+            trip_plans.erase(trip_plans.begin() + src);
+            dest_orders.erase(dest_orders.begin() + src);
+        }
+        return true;
+    }
+    else if (op == 3 && n_trip >= 2)
+    {
+        // 调整整趟的先后顺序
+        int a = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
+        int b = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
+        if (a == b) return false;
+        std::swap(trip_plans[a], trip_plans[b]);
+        std::swap(dest_orders[a], dest_orders[b]);
+        return true;
+    }
+    else if (op == 4 && n_trip >= 1)
     {
         // 趟内交换两个目的地
         int t = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
@@ -232,7 +380,7 @@ bool Task3::try_random_move(
         std::swap(dest_orders[t][i], dest_orders[t][j]);
         return true;
     }
-    else if (op == 2 && n_trip >= 1)
+    else if (op == 5 && n_trip >= 1)
     {
         // 趟内 2-opt: 反转某段子路径
         int t = std::uniform_int_distribution<int>(0, n_trip - 1)(rng);
@@ -250,7 +398,7 @@ bool Task3::try_random_move(
 // ========== sa_optimize ==========
 // 模拟退火优化, 使用加权评分:
 // $$\text{score} = M \cdot \text{overtime\_count} + \text{total\_cost}$$
-// M 足够大使得超时数成为主导项 (优先压超时), 同超时下优化成本
+// M 足够大使得超时数成为主导项, 近似实现“先比超时、再比成本”
 //
 // 接受准则:
 // $$P(\text{accept}) = \begin{cases}
@@ -283,9 +431,9 @@ void Task3::sa_optimize(
     auto best_orders = dest_orders;
 
     // ---- 自适应初始温度 ----
-    // 对初解做 100 次随机扰动, 用上坡 Δ 的中位数反推 T_init (接受率 ≈ 0.8)
+    // 对初解做 200 次随机扰动, 用上坡 Δ 的中位数反推 T_init (接受率 ≈ 0.8)
     vector<double> deltas;
-    for (int k = 0; k < 100; ++k)
+    for (int k = 0; k < 200; ++k)
     {
         auto p2 = trip_plans, o2 = dest_orders;
         if (!try_random_move(p2, o2)) continue;
@@ -305,7 +453,7 @@ void Task3::sa_optimize(
     }
 
     // ---- Lundy-Mees 参数 ----
-    const int    MAX_ITER = 100000;
+    const int    MAX_ITER = 150000;
     const double T_MIN    = 1e-3;
     double beta = (T - T_MIN) / (MAX_ITER * T * T_MIN);
 
@@ -366,6 +514,18 @@ Task3Result Task3::solve()
     // 1. EDD 贪心初解
     vector<vector<int>> trip_plans, dest_orders;
     greedy_init(trip_plans, dest_orders);
+
+    // 1.1 同一分趟下同时尝试 nearest-first / heaviest-first，两者择优作为 SA 起点
+    vector<vector<int>> nearest_orders;
+    nearest_orders.reserve(trip_plans.size());
+    for (const auto& trip : trip_plans)
+        nearest_orders.push_back(nearest_first_order(unique_dests(trip), ap));
+
+    vector<double> init_deliv_a(n_pkg), init_deliv_b(n_pkg);
+    auto [ot_a, cost_a] = evaluate_solution(trip_plans, dest_orders, init_deliv_a);
+    auto [ot_b, cost_b] = evaluate_solution(trip_plans, nearest_orders, init_deliv_b);
+    if (ot_b < ot_a || (ot_b == ot_a && cost_b < cost_a - 1e-9))
+        dest_orders = nearest_orders;
 
     // 2. SA 优化
     sa_optimize(trip_plans, dest_orders);
