@@ -5,57 +5,11 @@
 
 namespace output {
 
-void format_md(const std::string& folder, std::ofstream& out)
+namespace {
+
+template <typename TResult>
+void write_task2_impl(const TResult& r, const input_data& data, std::ofstream& out)
 {
-    out << "# " << folder << " 最短路结果\n\n";
-}
-
-void shortestPath(const Task1Result& r, std::ofstream& out)
-{
-    out << "## 一、最短路（Dijkstra）\n\n";
-    out << "从驿站（节点 0）到各节点的 **最短距离**：\n\n";
-
-    // 表格头
-    out << "| 目标节点 |";
-    for (int i = 0; i < r.n; ++i)
-        out << " " << i << " |";
-    out << "\n";
-
-    out << "|";
-    for (int i = 0; i <= r.n; ++i)
-        out << "---|";
-    out << "\n";
-
-    // 距离行
-    out << "| 最短距离 |";
-    for (int i = 0; i < r.n; ++i)
-        out << " " << r.dist[i] << " |";
-    out << "\n\n";
-
-    // 每条最短路径回溯
-    out << "各节点最短路径：\n\n";
-    for (int dst = 1; dst < r.n; ++dst)
-    {
-        std::vector<int> path = get_path(r.prev, 0, dst);
-        if (path.empty())
-        {
-            out << "- `0 → " << dst << "`：不可达\n";
-            continue;
-        }
-        out << "- `0 → " << dst << "`：";
-        for (size_t i = 0; i < path.size(); ++i)
-        {
-            if (i > 0) out << " → ";
-            out << path[i];
-        }
-        out << "，距离 **" << r.dist[dst] << "**\n";
-    }
-}
-
-void task2(const Task2Result& r, const input_data& data, std::ofstream& out)
-{
-    out << "## 二、T2 最小化不满意度之和（模拟退火）\n\n";
-
     out << "**总不满意度之和**：**" << std::fixed << std::setprecision(4)
         << r.total_dissatisfaction << "**\n\n";
 
@@ -94,9 +48,9 @@ void task2(const Task2Result& r, const input_data& data, std::ofstream& out)
     }
 }
 
-void task3(const Task3Result& r, const input_data& data, std::ofstream& out)
+template <typename TResult>
+void write_task3_impl(const TResult& r, const input_data& data, std::ofstream& out)
 {
-    out << "\n## 三、T3 带容量运送成本\n\n";
     out << "- 总运送成本：**" << std::fixed << std::setprecision(4) << r.sumCost << "**\n";
     out << "- 超时包裹数：**" << r.exTime << "**\n";
     out << "- 趟数：**" << r.trips.size() << "**\n\n";
@@ -136,10 +90,9 @@ void task3(const Task3Result& r, const input_data& data, std::ofstream& out)
     }
 }
 
-void task4(const Task4Result& r, const input_data& data, std::ofstream& out)
+template <typename TResult>
+void write_task4_impl(const TResult& r, const input_data& data, std::ofstream& out)
 {
-    out << "\n## 四、T4 退货回收（GA 近似）\n\n";
-
     if (r.destination.empty())
     {
         out << "- 回收点数量：**0**\n";
@@ -165,9 +118,9 @@ void task4(const Task4Result& r, const input_data& data, std::ofstream& out)
         << total_len << "**\n\n";
 }
 
-void task5(const Task5Result& r, const input_data& data, std::ofstream& out)
+template <typename TResult>
+void write_task5_impl(const TResult& r, const input_data& data, std::ofstream& out)
 {
-    out << "\n## 五、T5 双车协同配送\n\n";
     out << "- 总运送成本：**" << std::fixed << std::setprecision(4) << r.sumCost << "**\n";
     out << "- 超时包裹数：**" << r.exTime << "**\n";
     out << "- 车1趟数：**" << r.trips1.size() << "**\n";
@@ -219,6 +172,103 @@ void task5(const Task5Result& r, const input_data& data, std::ofstream& out)
 
     write_car(r.trips1, 1);
     write_car(r.trips2, 2);
+}
+
+} // namespace
+
+void format_md(const std::string& folder, std::ofstream& out)
+{
+    out << "# " << folder << " 测试结果\n\n";   // 这里好像有乱码问题
+}
+
+void shortestPath(const Task1Result& r, std::ofstream& out)
+{
+    out << "## 一、最短路（Dijkstra）\n\n";
+    out << "从驿站（节点 0）到各节点的 **最短距离**：\n\n";
+
+    // 表格头
+    out << "| 目标节点 |";
+    for (int i = 0; i < r.n; ++i)
+        out << " " << i << " |";
+    out << "\n";
+
+    out << "|";
+    for (int i = 0; i <= r.n; ++i)
+        out << "---|";
+    out << "\n";
+
+    // 距离行
+    out << "| 最短距离 |";
+    for (int i = 0; i < r.n; ++i)
+        out << " " << r.dist[i] << " |";
+    out << "\n\n";
+
+    // 每条最短路径回溯
+    out << "各节点最短路径：\n\n";
+    for (int dst = 1; dst < r.n; ++dst)
+    {
+        std::vector<int> path = get_path(r.prev, 0, dst);
+        if (path.empty())
+        {
+            out << "- `0 → " << dst << "`：不可达\n";
+            continue;
+        }
+        out << "- `0 → " << dst << "`：";
+        for (size_t i = 0; i < path.size(); ++i)
+        {
+            if (i > 0) out << " → ";
+            out << path[i];
+        }
+        out << "，距离 **" << r.dist[dst] << "**\n";
+    }
+}
+
+void task2(const Task2Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "## 二、T2 最小化不满意度之和（模拟退火）\n\n";
+    write_task2_impl(r, data, out);
+}
+
+void task3(const Task3Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 三、T3 带容量运送成本\n\n";
+    write_task3_impl(r, data, out);
+}
+
+void task4(const Task4Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 四、T4 退货回收（GA 近似）\n\n";
+    write_task4_impl(r, data, out);
+}
+
+void task5(const Task5Result& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 五、T5 双车协同配送\n\n";
+    write_task5_impl(r, data, out);
+}
+
+void task2_simple(const Task2SimpleResult& r, const input_data& data, std::ofstream& out)
+{
+    out << "## 二、T2 最小化不满意度之和（纯贪心简化版）\n\n";
+    write_task2_impl(r, data, out);
+}
+
+void task3_simple(const Task3SimpleResult& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 三、T3 带容量运送成本（EDD纯贪心简化版）\n\n";
+    write_task3_impl(r, data, out);
+}
+
+void task4_simple(const Task4SimpleResult& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 四、T4 退货回收（最近邻贪心简化版）\n\n";
+    write_task4_impl(r, data, out);
+}
+
+void task5_simple(const Task5SimpleResult& r, const input_data& data, std::ofstream& out)
+{
+    out << "\n## 五、T5 双车协同配送（K-means+贪心简化版）\n\n";
+    write_task5_impl(r, data, out);
 }
 
 } // namespace output
