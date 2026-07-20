@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
     {
         input_data data = read_input(folder);
 
-        std::ofstream out(folder + "/result.md");
+        std::ofstream out(to_path(folder + "/result.md"));
         if (!out)
         {
             std::cerr << "无法创建 " << folder << "/result.md\n";

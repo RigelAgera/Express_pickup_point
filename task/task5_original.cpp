@@ -12,17 +12,6 @@
 
 using std::vector;
 
-namespace
-{
-bool better_solution(double lhs_cost, int lhs_ot, double rhs_cost, int rhs_ot)
-{
-    const double EPS = 1e-9;
-    if (lhs_cost < rhs_cost - EPS) return true;
-    if (lhs_cost > rhs_cost + EPS) return false;
-    return lhs_ot < rhs_ot;
-}
-}
-
 // ====================================================================
 // 构造函数
 // ====================================================================
@@ -267,8 +256,8 @@ std::pair<vector<int>, vector<int>> Task5::kmeans_partition()
 }
 
 // ====================================================================
-// 贪心初解 (单车)
-// EDD 分趟 + nearest-first 趟内排序
+// 贪心初解 (单车, 与 T3 完全一致)
+// EDD 分趟 + heaviest-first 趟内排序
 // ====================================================================
 void Task5::greedy_init_one(const vector<int>& pkg_indices, CarPlan& plan)
 {
@@ -292,7 +281,7 @@ void Task5::greedy_init_one(const vector<int>& pkg_indices, CarPlan& plan)
         if (cur_weight + w > c1.capacity + 1e-9 && !cur_trip.empty())
         {
             plan.trip_plans.push_back(cur_trip);
-            plan.dest_orders.push_back(nearest_first_order(unique_dests(cur_trip), ap));
+            plan.dest_orders.push_back(heaviest_dest_order(cur_trip));
             cur_trip.clear();
             cur_weight = 0.0;
         }
@@ -303,7 +292,7 @@ void Task5::greedy_init_one(const vector<int>& pkg_indices, CarPlan& plan)
     if (!cur_trip.empty())
     {
         plan.trip_plans.push_back(cur_trip);
-        plan.dest_orders.push_back(nearest_first_order(unique_dests(cur_trip), ap));
+        plan.dest_orders.push_back(heaviest_dest_order(cur_trip));
     }
 }
 
@@ -364,7 +353,7 @@ vector<int> Task5::destroy_worst(CarPlan (&cars)[2])
             else if ((int)kept.size() != (int)t.size())
             {
                 t = kept;
-                cars[c].dest_orders[ti] = nearest_first_order(unique_dests(t), ap);
+                cars[c].dest_orders[ti] = heaviest_dest_order(t);
             }
         }
     }
@@ -463,7 +452,7 @@ vector<int> Task5::destroy_shaw(CarPlan (&cars)[2])
             else if ((int)kept.size() != (int)t.size())
             {
                 t = kept;
-                cars[c].dest_orders[ti] = nearest_first_order(unique_dests(t), ap);
+                cars[c].dest_orders[ti] = heaviest_dest_order(t);
             }
         }
     }
@@ -559,7 +548,7 @@ vector<int> Task5::destroy_time_window(CarPlan (&cars)[2])
             else if ((int)kept.size() != (int)t.size())
             {
                 t = kept;
-                cars[c].dest_orders[ti] = nearest_first_order(unique_dests(t), ap);
+                cars[c].dest_orders[ti] = heaviest_dest_order(t);
             }
         }
 
@@ -588,7 +577,7 @@ void Task5::repair_greedy(vector<int>& pool, CarPlan (&cars)[2])
         for (int c = 0; c < 2; ++c)
             for (const auto& t : cars[c].trip_plans)
                 total_w[c] += trip_weight(t);
-        double balance_penalty = 10.0; // 引入合理的负载均衡惩罚, 避免把包裹全塞给一车
+        double balance_penalty = 50.0; // 往重车插入每额外 1 单位重量加 50 的 delta
 
         for (size_t pi = 0; pi < pool.size(); ++pi)
         {
@@ -649,12 +638,6 @@ void Task5::repair_greedy(vector<int>& pool, CarPlan (&cars)[2])
                 // 情况2: 新增一趟
                 {
                     double delta = ap.dist[0][dest] + ap.dist[dest][0] + load_bias;
-                    // 如果一辆车当前完全为空 (0趟), 新增第一趟时给额外的成本奖励/免死金牌, 鼓励激活第二辆车
-                    if (plan.trip_plans.empty())
-                    {
-                        delta -= 200.0;
-                    }
-
                     if (delta < best_delta)
                     {
                         best_delta = delta;
@@ -687,7 +670,7 @@ void Task5::repair_greedy(vector<int>& pool, CarPlan (&cars)[2])
             bool exists = false;
             for (int d : d_order)
                 if (d == dest) { exists = true; break; }
-            if (!exists && best_pos >= 0 && best_pos <= (int)d_order.size())
+            if (!exists)
                 d_order.insert(d_order.begin() + best_pos, dest);
         }
 
@@ -827,8 +810,9 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
     // 当前解评估
     vector<double> cur_deliv0, cur_deliv1;
     auto [cur_cost, cur_ot] = evaluate_full(cars[0], cars[1], cur_deliv0, cur_deliv1);
-    double best_cost = cur_cost;
-    int best_ot = cur_ot;
+    double cur_score = cur_cost;
+
+    double best_score = cur_score;
     CarPlan best_cars[2] = {cars[0], cars[1]};
 
     // ---- 自适应初始温度 ----
@@ -872,7 +856,7 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
     }
 
     // ---- Lundy-Mees 参数 ----
-    const int    MAX_ITER = 20000;
+    const int    MAX_ITER = 100000;
     const double T_MIN    = 1e-3;
     double beta = (T - T_MIN) / (MAX_ITER * T * T_MIN);
 
@@ -940,16 +924,8 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
             vector<double> nd0, nd1;
             auto [new_cost, new_ot] = evaluate_full(cars[0], cars[1], nd0, nd1);
             double delta = new_cost - cur_cost;
-            bool accept = false;
 
-            if (new_cost < cur_cost - 1e-9)
-                accept = true;
-            else if (std::abs(new_cost - cur_cost) <= 1e-9 && new_ot < cur_ot)
-                accept = true;
-            else if (new_cost > cur_cost + 1e-9 && uni(rng) < std::exp(-delta / T))
-                accept = true;
-
-            if (accept)
+            if (delta < 0 || uni(rng) < std::exp(-delta / T))
             {
                 // 接受新解
                 cur_cost  = new_cost;
@@ -957,10 +933,9 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
                 cur_deliv0 = nd0;
                 cur_deliv1 = nd1;
 
-                if (better_solution(new_cost, new_ot, best_cost, best_ot))
+                if (new_cost < best_score)
                 {
-                    best_cost = new_cost;
-                    best_ot = new_ot;
+                    best_score = new_cost;
                     best_cars[0] = cars[0];
                     best_cars[1] = cars[1];
 
@@ -1004,55 +979,30 @@ double Task5::compute_cost()
 // ====================================================================
 Task5Result Task5::solve()
 {
-    const int RESTARTS = 6;
-    const unsigned int BASE_SEED = 20260719u;
+    // ---- 1. K-means 初始分区 ----
+    auto [cluster0, cluster1] = kmeans_partition();
 
-    CarPlan best_final[2];
-    double best_total_cost = 0.0;
-    int best_total_ot = 0;
-    bool have_best = false;
+    // ---- 2. 贪心初解 (每车独立, 与 T3 一致) ----
+    CarPlan cars0, cars1;
+    greedy_init_one(cluster0, cars0);
+    greedy_init_one(cluster1, cars1);
 
-    for (int attempt = 0; attempt < RESTARTS; ++attempt)
-    {
-        rng.seed(BASE_SEED + attempt);
+    CarPlan cars_arr[2] = {cars0, cars1};
 
-        // ---- 1. K-means 初始分区 ----
-        auto [cluster0, cluster1] = kmeans_partition();
+    // ---- 3. SA + ALNS 优化 ----
+    sa_optimize(cars_arr);
 
-        // ---- 2. 贪心初解 ----
-        CarPlan cars0, cars1;
-        greedy_init_one(cluster0, cars0);
-        greedy_init_one(cluster1, cars1);
-
-        CarPlan cars_arr[2] = {cars0, cars1};
-
-        // ---- 3. SA + ALNS 优化 ----
-        sa_optimize(cars_arr);
-
-        // ---- 4. 记录本轮结果 ----
-        vector<double> deliv0, deliv1;
-        auto [cost, ot] = evaluate_full(cars_arr[0], cars_arr[1], deliv0, deliv1);
-
-        if (!have_best || better_solution(cost, ot, best_total_cost, best_total_ot))
-        {
-            have_best = true;
-            best_total_cost = cost;
-            best_total_ot = ot;
-            best_final[0] = cars_arr[0];
-            best_final[1] = cars_arr[1];
-        }
-    }
-
+    // ---- 4. 最终评估 & 构造输出 ----
     vector<double> deliv0, deliv1;
-    auto [total_cost, overtime] = evaluate_full(best_final[0], best_final[1], deliv0, deliv1);
+    auto [total_cost, overtime] = evaluate_full(cars_arr[0], cars_arr[1], deliv0, deliv1);
 
     // 构造 trips1
     trips1.clear();
     double cur_time1 = 0.0;
-    for (size_t t = 0; t < best_final[0].trip_plans.size(); ++t)
+    for (size_t t = 0; t < cars_arr[0].trip_plans.size(); ++t)
     {
-        const auto& pkg_ids = best_final[0].trip_plans[t];
-        const auto& dest_order = best_final[0].dest_orders[t];
+        const auto& pkg_ids = cars_arr[0].trip_plans[t];
+        const auto& dest_order = cars_arr[0].dest_orders[t];
         if (pkg_ids.empty()) continue;
         vector<int> route = build_route(dest_order, ap);
         Trip sim = simulate_trip(pkg_ids, route, cur_time1, pkgs, c1, ap);
@@ -1063,10 +1013,10 @@ Task5Result Task5::solve()
     // 构造 trips2
     trips2.clear();
     double cur_time2 = 0.0;
-    for (size_t t = 0; t < best_final[1].trip_plans.size(); ++t)
+    for (size_t t = 0; t < cars_arr[1].trip_plans.size(); ++t)
     {
-        const auto& pkg_ids = best_final[1].trip_plans[t];
-        const auto& dest_order = best_final[1].dest_orders[t];
+        const auto& pkg_ids = cars_arr[1].trip_plans[t];
+        const auto& dest_order = cars_arr[1].dest_orders[t];
         if (pkg_ids.empty()) continue;
         vector<int> route = build_route(dest_order, ap);
         Trip sim = simulate_trip(pkg_ids, route, cur_time2, pkgs, c2, ap);

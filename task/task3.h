@@ -25,7 +25,6 @@ private:
     graph g;
     std::vector<package> pkgs;
     car c;
-    std::vector<Trip> trips;
     AllPairResult ap;
     int n_pkg;
     std::mt19937 rng;   // 伪随机数生成器

@@ -28,6 +28,9 @@ double trip_cost(const Trip& trip, const graph& g,
     for (int pid : trip.pkg_ids)
         cur_weight += pkgs[pid].weight;
 
+    // 防止 build_route 路径拼接导致同一目的地重复出现时重复减重
+    std::vector<bool> delivered(trip.pkg_ids.size(), false);
+
     for (size_t seg = 0; seg + 1 < trip.route.size(); ++seg)
     {
         int from = trip.route[seg];
@@ -35,10 +38,13 @@ double trip_cost(const Trip& trip, const graph& g,
         double seg_len = ap.dist[from][to];
 
         double weight_before = cur_weight;
-        for (int pid : trip.pkg_ids)
+        for (size_t i = 0; i < trip.pkg_ids.size(); ++i)
         {
-            if (pkgs[pid].dest == to)
-                cur_weight -= pkgs[pid].weight;
+            if (!delivered[i] && pkgs[trip.pkg_ids[i]].dest == to)
+            {
+                cur_weight -= pkgs[trip.pkg_ids[i]].weight;
+                delivered[i] = true;
+            }
         }
 
         cost += seg_len * weight_before;

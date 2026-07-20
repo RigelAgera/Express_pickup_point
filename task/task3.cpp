@@ -20,7 +20,7 @@ Task3::Task3(const input_data& data)
     : g(data.g), pkgs(data.packages), c(data.c),
       ap(all_pairs_dijkstra(data.g)),
       n_pkg((int)data.packages.size()),
-      rng(std::random_device{}())
+      rng((unsigned)std::chrono::steady_clock::now().time_since_epoch().count())
 {
     // T3 要求 S_i = 0, 强制清零
     for (auto& p : pkgs)

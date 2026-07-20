@@ -72,29 +72,29 @@ private:
     // 均使用廉价代理指标, 不跑完整 evaluate
 
     // Worst-removal (代理版): 按 dist[0][dest] * weight 排序, 移除分数最高的 k 个
-    vector<int> destroy_worst(CarPlan cars[2]);
+    vector<int> destroy_worst(CarPlan (&cars)[2]);
 
     // Shaw-removal: 移除与随机种子最相关的 k-1 个包裹
     // 相关度 = γ1×地理距离 + γ2×deadline差异 + γ3×重量差异 (归一化加权)
-    vector<int> destroy_shaw(CarPlan cars[2]);
+    vector<int> destroy_shaw(CarPlan (&cars)[2]);
 
     // Trip-destroy: 随机选一辆车的一整趟, 全部移除
-    vector<int> destroy_trip(CarPlan cars[2]);
+    vector<int> destroy_trip(CarPlan (&cars)[2]);
 
     // Time-window-removal: 移除所有当前超时的包裹 + 随机同趟包裹
-    vector<int> destroy_time_window(CarPlan cars[2]);
+    vector<int> destroy_time_window(CarPlan (&cars)[2]);
 
     // ========== ALNS 修复算子 (Repair) ==========
     // 将 pool 中的包裹逐个插回 cars[2], 支持跨车插入
 
     // Greedy-cheapest (代理版): 每次选 Δ 最小的位置插入
-    void repair_greedy(vector<int>& pool, CarPlan cars[2]);
+    void repair_greedy(vector<int>& pool, CarPlan (&cars)[2]);
 
     // Regret-2: 用 regret 值决定插入顺序 (最佳Δ - 次佳Δ)
-    void repair_regret2(vector<int>& pool, CarPlan cars[2]);
+    void repair_regret2(vector<int>& pool, CarPlan (&cars)[2]);
 
     // ========== SA 优化主循环 ==========
-    void sa_optimize(CarPlan cars[2]);
+    void sa_optimize(CarPlan (&cars)[2]);
 
 public:
     explicit Task5(const input_data& data);
