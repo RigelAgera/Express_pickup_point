@@ -17,10 +17,12 @@ using std::vector;
 
 // ========== 构造函数 ==========
 Task3::Task3(const input_data& data)
-    : g(data.g), pkgs(data.packages), c(data.c),
-      ap(all_pairs_dijkstra(data.g)),
-      n_pkg((int)data.packages.size()),
-      rng((unsigned)std::chrono::steady_clock::now().time_since_epoch().count())
+    : g(data.g),                              // 地图图结构 (边权=路段距离)
+      pkgs(data.packages),                    // 所有包裹列表 (已按 S_i=0 约束处理)
+      c(data.c),                              // 车辆参数 (容量、自重、速度)
+      ap(all_pairs_dijkstra(data.g)),         // 全源最短路结果 (任意两点间最短距离)
+      n_pkg((int)data.packages.size()),       // 包裹总数
+      rng((unsigned)std::chrono::steady_clock::now().time_since_epoch().count()) // 梅森旋转随机数生成器
 {
     // T3 要求 S_i = 0, 强制清零
     for (auto& p : pkgs)
@@ -191,8 +193,8 @@ bool Task3::try_random_move(
     vector<vector<int>>& trip_plans,
     vector<vector<int>>& dest_orders)
 {
-    int n_trip = (int)trip_plans.size();
-    int op = std::uniform_int_distribution<int>(0, 5)(rng);
+    int n_trip = (int)trip_plans.size();      // 当前分趟总数
+    int op = std::uniform_int_distribution<int>(0, 5)(rng); // 随机选一种邻域操作 (0~5)
 
     // 跨趟变动后尽量保留既有目的地顺序，仅对新增目的地做增量补全
     auto refresh_dest_order = [&](int t)
@@ -412,27 +414,28 @@ void Task3::sa_optimize(
     vector<vector<int>>& trip_plans,
     vector<vector<int>>& dest_orders)
 {
-    // M: 超时惩罚系数, 取足够大使其主导评分
+    // M: 超时惩罚系数, 取足够大使其主导评分 (字典序: 先比超时数再比成本)
     // 参考: 示例数据一趟成本约 850, 大规模数据预计在 10^5 量级
     const double M = 1e8;
 
+    // score: 加权评分函数 = M * 超时数 + 总成本 (M 大 → 超时主导)
     auto score = [&](int ot, double cost) -> double {
         return M * static_cast<double>(ot) + cost;
     };
 
     // 当前解评估
-    vector<double> cur_deliv(n_pkg);
-    auto [cur_ot, cur_cost] = evaluate_solution(
+    vector<double> cur_deliv(n_pkg);          // 当前解中各包裹送达时间 D_i
+    auto [cur_ot, cur_cost] = evaluate_solution( // cur_ot: 当前超时数, cur_cost: 当前总成本
         trip_plans, dest_orders, cur_deliv);
-    double cur_score = score(cur_ot, cur_cost);
+    double cur_score = score(cur_ot, cur_cost); // 当前解的加权评分
 
-    double best_score = cur_score;
-    auto best_plans = trip_plans;
-    auto best_orders = dest_orders;
+    double best_score = cur_score;            // 历史最优评分
+    auto best_plans = trip_plans;             // 历史最优分趟方案
+    auto best_orders = dest_orders;           // 历史最优目的地顺序
 
     // ---- 自适应初始温度 ----
     // 对初解做 200 次随机扰动, 用上坡 Δ 的中位数反推 T_init (接受率 ≈ 0.8)
-    vector<double> deltas;
+    vector<double> deltas;                    // 收集所有上坡移动的得分差 Δ > 0
     for (int k = 0; k < 200; ++k)
     {
         auto p2 = trip_plans, o2 = dest_orders;
@@ -443,41 +446,43 @@ void Task3::sa_optimize(
         double d = ns - cur_score;
         if (d > 0) deltas.push_back(d);
     }
-    double T = 1.0;
+    double T = 1.0;                           // 初始温度 (模拟退火)
     if (!deltas.empty())
     {
         std::sort(deltas.begin(), deltas.end());
-        double delta_med = deltas[deltas.size() / 2];    // 中位数
+        double delta_med = deltas[deltas.size() / 2];    // 上坡得分差的中位数
         T = delta_med / 0.223;   // exp(-Δ/T) = 0.8  ⟹  T = Δ / ln(1/0.8) ≈ Δ / 0.223
         if (T < 0.1) T = 0.1;
     }
 
-    // ---- Lundy-Mees 参数 ----
-    const int    MAX_ITER = 150000;
-    const double T_MIN    = 1e-3;
-    double beta = (T - T_MIN) / (MAX_ITER * T * T_MIN);
+    // ---- Lundy-Mees 恒温退火参数 ----
+    const int    MAX_ITER = 150000;           // 最大迭代次数
+    const double T_MIN    = 1e-3;             // 终止温度下限
+    double beta = (T - T_MIN) / (MAX_ITER * T * T_MIN); // Lundy-Mees 退火速率系数
 
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    std::uniform_real_distribution<double> uni(0.0, 1.0); // [0,1) 均匀分布, 用于 Metropolis 接受判断
 
     // ---- 主循环 ----
     for (int iter = 0; iter < MAX_ITER; ++iter)
     {
-        auto saved_plans = trip_plans;
-        auto saved_orders = dest_orders;
+        auto saved_plans = trip_plans;        // 移动前的分趟方案备份 (用于回滚)
+        auto saved_orders = dest_orders;      // 移动前目的地顺序备份
 
         if (!try_random_move(trip_plans, dest_orders))
         {
             trip_plans = saved_plans;
             dest_orders = saved_orders;
-            goto COOL;
+            T = T / (1.0 + beta * T);
+            if (T < T_MIN) break;
+            continue;
         }
 
         {
-            vector<double> nd(n_pkg);
-            auto [ot_new, cost_new] = evaluate_solution(
+            vector<double> nd(n_pkg);         // 新解中各包裹送达时间
+            auto [ot_new, cost_new] = evaluate_solution( // ot_new: 新解超时数, cost_new: 新解总成本
                 trip_plans, dest_orders, nd);
-            double new_score = score(ot_new, cost_new);
-            double delta = new_score - cur_score;
+            double new_score = score(ot_new, cost_new); // 新解加权评分
+            double delta = new_score - cur_score;       // 评分差 Δ (正=变差, 负=变好)
 
             if (delta < 0 || uni(rng) < std::exp(-delta / T))
             {
@@ -499,7 +504,6 @@ void Task3::sa_optimize(
             }
         }
 
-    COOL:
         T = T / (1.0 + beta * T);
         if (T < T_MIN) break;
     }
@@ -516,14 +520,14 @@ Task3Result Task3::solve()
     greedy_init(trip_plans, dest_orders);
 
     // 1.1 同一分趟下同时尝试 nearest-first / heaviest-first，两者择优作为 SA 起点
-    vector<vector<int>> nearest_orders;
+    vector<vector<int>> nearest_orders;       // nearest-first 策略生成的目的地顺序
     nearest_orders.reserve(trip_plans.size());
     for (const auto& trip : trip_plans)
         nearest_orders.push_back(nearest_first_order(unique_dests(trip), ap));
 
-    vector<double> init_deliv_a(n_pkg), init_deliv_b(n_pkg);
-    auto [ot_a, cost_a] = evaluate_solution(trip_plans, dest_orders, init_deliv_a);
-    auto [ot_b, cost_b] = evaluate_solution(trip_plans, nearest_orders, init_deliv_b);
+    vector<double> init_deliv_a(n_pkg), init_deliv_b(n_pkg); // 两种初解对应送达时间
+    auto [ot_a, cost_a] = evaluate_solution(trip_plans, dest_orders, init_deliv_a);        // heaviest-first 初解
+    auto [ot_b, cost_b] = evaluate_solution(trip_plans, nearest_orders, init_deliv_b);     // nearest-first 初解
     if (ot_b < ot_a || (ot_b == ot_a && cost_b < cost_a - 1e-9))
         dest_orders = nearest_orders;
 
@@ -536,8 +540,8 @@ Task3Result Task3::solve()
         trip_plans, dest_orders, deliver_time);
 
     // 4. 构造 Trip 输出列表
-    vector<Trip> result_trips;
-    double cur_time = 0.0;
+    vector<Trip> result_trips;                // 最终输出的各趟运送结果
+    double cur_time = 0.0;                    // 小车累计时间 (回到驿站时刻)
     for (size_t t = 0; t < trip_plans.size(); ++t)
     {
         const auto& pkg_ids = trip_plans[t];
