@@ -2,6 +2,60 @@
 #include "dijkstra.h"
 #include <fstream>
 #include <iomanip>
+#include <set>
+#include <sstream>
+
+namespace {
+
+std::string json_escape(const std::string& s)
+{
+    std::ostringstream oss;
+    for (char ch : s)
+    {
+        unsigned char uch = static_cast<unsigned char>(ch);
+        switch (ch)
+        {
+        case '\\': oss << "\\\\"; break;
+        case '"': oss << "\\\""; break;
+        case '\b': oss << "\\b"; break;
+        case '\f': oss << "\\f"; break;
+        case '\n': oss << "\\n"; break;
+        case '\r': oss << "\\r"; break;
+        case '\t': oss << "\\t"; break;
+        default:
+            if (uch < 0x20 || uch > 0x7e)
+            {
+                oss << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                    << static_cast<int>(uch) << std::dec << std::setfill(' ');
+            }
+            else
+            {
+                oss << ch;
+            }
+            break;
+        }
+    }
+    return oss.str();
+}
+
+const char* pick_color(size_t idx)
+{
+    static const char* palette[] = {
+        "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
+        "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe",
+        "#008080", "#e6beff", "#9a6324", "#fffac8", "#800000",
+        "#aaffc3", "#808000", "#ffd8b1", "#000075", "#808080"
+    };
+    return palette[idx % (sizeof(palette) / sizeof(palette[0]))];
+}
+
+template <typename T>
+void write_json_number(std::ofstream& out, T value)
+{
+    out << std::fixed << std::setprecision(6) << value;
+}
+
+} // namespace
 
 namespace output {
 
@@ -269,6 +323,118 @@ void task5_simple(const Task5SimpleResult& r, const input_data& data, std::ofstr
 {
     out << "\n## 五、T5 双车协同配送（K-means+贪心简化版）\n\n";
     write_task5_impl(r, data, out);
+}
+
+void export_visualization_json(const input_data& data,
+                               const std::vector<VisualizationRoute>& routes,
+                               const std::string& output_file,
+                               const std::string& title)
+{
+    std::ofstream out(to_path(output_file));
+    if (!out)
+        return;
+
+    out << "{\n";
+    out << "  \"meta\": {\n";
+    out << "    \"title\": \"" << json_escape(title) << "\",\n";
+    out << "    \"node_count\": " << data.g.get_n() << ",\n";
+    out << "    \"edge_count\": ";
+
+    std::set<std::pair<int, int>> unique_edges;
+    for (const auto& adj_list : data.g.get_adj())
+    {
+        for (const auto& e : adj_list)
+        {
+            int u = std::min(e.u, e.v);
+            int v = std::max(e.u, e.v);
+            unique_edges.insert({u, v});
+        }
+    }
+    out << unique_edges.size() << ",\n";
+    out << "    \"route_count\": " << routes.size() << "\n";
+    out << "  },\n";
+
+    out << "  \"nodes\": [\n";
+    const auto& nodes = data.g.get_nodes();
+    for (size_t i = 0; i < nodes.size(); ++i)
+    {
+        const auto& n = nodes[i];
+        out << "    {\"id\": " << n.id << ", \"x\": ";
+        write_json_number(out, n.x);
+        out << ", \"y\": ";
+        write_json_number(out, n.y);
+        out << ", \"is_station\": " << (n.is_station ? "true" : "false") << "}";
+        if (i + 1 < nodes.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ],\n";
+
+    out << "  \"edges\": [\n";
+    size_t edge_idx = 0;
+    for (const auto& uv : unique_edges)
+    {
+        int u = uv.first;
+        int v = uv.second;
+        double w = 0.0;
+        for (const auto& e : data.g.get_adj()[u])
+        {
+            if (e.v == v)
+            {
+                w = e.w;
+                break;
+            }
+        }
+        out << "    {\"u\": " << u << ", \"v\": " << v << ", \"w\": ";
+        write_json_number(out, w);
+        out << "}";
+        if (++edge_idx < unique_edges.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ],\n";
+
+    out << "  \"routes\": [\n";
+    for (size_t i = 0; i < routes.size(); ++i)
+    {
+        const auto& route = routes[i];
+        std::string color = route.color.empty() ? pick_color(i) : route.color;
+        std::string label = route.label.empty() ? ("route " + std::to_string(i + 1)) : route.label;
+
+        out << "    {\"label\": \"" << json_escape(label) << "\",\n";
+        out << "     \"color\": \"" << json_escape(color) << "\",\n";
+        out << "     \"nodes\": [";
+        for (size_t j = 0; j < route.nodes.size(); ++j)
+        {
+            if (j > 0) out << ", ";
+            out << route.nodes[j];
+        }
+        out << "],\n";
+
+        out << "     \"pkg_ids\": [";
+        for (size_t j = 0; j < route.pkg_ids.size(); ++j)
+        {
+            if (j > 0) out << ", ";
+            out << route.pkg_ids[j];
+        }
+        out << "],\n";
+
+        out << "     \"depart_time\": ";
+        if (route.depart_time < 0.0)
+            out << "null";
+        else
+            write_json_number(out, route.depart_time);
+        out << ",\n";
+
+        out << "     \"end_time\": ";
+        if (route.end_time < 0.0)
+            out << "null";
+        else
+            write_json_number(out, route.end_time);
+        out << "}";
+        if (i + 1 < routes.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ]\n";
+    out << "}\n";
 }
 
 } // namespace output

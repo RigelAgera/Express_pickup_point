@@ -416,7 +416,7 @@ void Task3::sa_optimize(
 {
     // M: 超时惩罚系数, 取足够大使其主导评分 (字典序: 先比超时数再比成本)
     // 参考: 示例数据一趟成本约 850, 大规模数据预计在 10^5 量级
-    const double M = 1e8;
+    const double M = 0.0;
 
     // score: 加权评分函数 = M * 超时数 + 总成本 (M 大 → 超时主导)
     auto score = [&](int ot, double cost) -> double {

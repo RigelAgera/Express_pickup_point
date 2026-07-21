@@ -11,9 +11,20 @@
 #include "../task/task5_simple.h"
 #include "input_reader.h"
 #include <string>
+#include <vector>
 #include <fstream>
 
 namespace output {
+
+    struct VisualizationRoute
+    {
+        std::vector<int> nodes;
+        std::string label;
+        std::string color;
+        std::vector<int> pkg_ids;
+        double depart_time = -1.0;
+        double end_time = -1.0;
+    };
 
     void format_md(const std::string& folder, std::ofstream& out);
     void shortestPath(const Task1Result& r, std::ofstream& out);
@@ -25,4 +36,8 @@ namespace output {
     void task3_simple(const Task3SimpleResult& r, const input_data& data, std::ofstream& out);
     void task4_simple(const Task4SimpleResult& r, const input_data& data, std::ofstream& out);
     void task5_simple(const Task5SimpleResult& r, const input_data& data, std::ofstream& out);
+    void export_visualization_json(const input_data& data,
+                                   const std::vector<VisualizationRoute>& routes,
+                                   const std::string& output_file,
+                                   const std::string& title = "");
 }

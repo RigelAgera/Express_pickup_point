@@ -1,7 +1,7 @@
 // T5: 双车协同配送 (2-CVRP + deadline)
 // 算法: K-means 初始分区 + ALNS 扰动 + SA 温控
-// 优化目标: total_cost = 车1成本 + 车2成本, 越小越好
-// 超时包裹数仅作统计项, 不参与 SA 评分
+// 优化目标: score = total_cost + overtime_penalty * overtime_count
+// overtime_penalty 可调, 用于控制成本与超时之间的权衡
 #pragma once
 #include "../common/models.h"
 #include "../common/graph.h"
@@ -29,6 +29,7 @@ private:
     AllPairResult ap;
     int n_pkg;
     std::mt19937 rng;
+    double overtime_penalty;
 
     // ---- 已构造的 Trip 结果 (供 compute_cost 使用) ----
     vector<Trip> trips1;
@@ -97,7 +98,7 @@ private:
     void sa_optimize(CarPlan (&cars)[2]);
 
 public:
-    explicit Task5(const input_data& data);
+    explicit Task5(const input_data& data, double overtime_penalty = 0.0);
     Task5Result solve();
     double compute_cost();
 };
