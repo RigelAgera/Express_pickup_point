@@ -1,6 +1,6 @@
 // T5: 双车协同配送 (2-CVRP + deadline)
 // 算法框架: K-means 初始分区 → 贪心初解 → ALNS 产生新解 → SA 决定接受/拒绝
-// 优化目标: total_cost = 车1成本 + 车2成本, 超时仅作统计
+// 优化目标: score = total_cost + overtime_penalty * overtime_count
 #include "task5.h"
 #include "../common/dijkstra.h"
 #include "../common/schedule_utils.h"
@@ -14,23 +14,34 @@ using std::vector;
 
 namespace
 {
-bool better_solution(double lhs_cost, int lhs_ot, double rhs_cost, int rhs_ot)
+double weighted_score(double cost, int overtime, double overtime_penalty)
+{
+    return cost + overtime_penalty * static_cast<double>(overtime);
+}
+
+bool better_solution(double lhs_cost, int lhs_ot,
+                     double rhs_cost, int rhs_ot,
+                     double overtime_penalty)
 {
     const double EPS = 1e-9;
-    if (lhs_cost < rhs_cost - EPS) return true;
-    if (lhs_cost > rhs_cost + EPS) return false;
-    return lhs_ot < rhs_ot;
+    double lhs_score = weighted_score(lhs_cost, lhs_ot, overtime_penalty);
+    double rhs_score = weighted_score(rhs_cost, rhs_ot, overtime_penalty);
+    if (lhs_score < rhs_score - EPS) return true;
+    if (lhs_score > rhs_score + EPS) return false;
+    if (lhs_ot != rhs_ot) return lhs_ot < rhs_ot;
+    return lhs_cost < rhs_cost - EPS;
 }
 }
 
 // ====================================================================
 // 构造函数
 // ====================================================================
-Task5::Task5(const input_data& data)
+Task5::Task5(const input_data& data, double overtime_penalty)
     : g(data.g), pkgs(data.packages), c1(data.c), c2(data.c),
       ap(all_pairs_dijkstra(data.g)),
       n_pkg((int)data.packages.size()),
-      rng(std::random_device{}())
+    rng(std::random_device{}()),
+    overtime_penalty(overtime_penalty)
 {
 }
 
@@ -819,7 +830,7 @@ void Task5::repair_regret2(vector<int>& pool, CarPlan (&cars)[2])
 
 // ====================================================================
 // SA 优化主循环
-// 评分函数: score = total_cost (超时不参与)
+// 评分函数: score = total_cost + overtime_penalty * overtime_count
 // 温控: Lundy-Mees 恒温退火 T_{k+1} = T_k / (1 + β·T_k)
 // ====================================================================
 void Task5::sa_optimize(CarPlan (&cars)[2])
@@ -827,8 +838,10 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
     // 当前解评估
     vector<double> cur_deliv0, cur_deliv1;
     auto [cur_cost, cur_ot] = evaluate_full(cars[0], cars[1], cur_deliv0, cur_deliv1);
+    double cur_score = weighted_score(cur_cost, cur_ot, overtime_penalty);
     double best_cost = cur_cost;
     int best_ot = cur_ot;
+    double best_score = cur_score;
     CarPlan best_cars[2] = {cars[0], cars[1]};
 
     // ---- 自适应初始温度 ----
@@ -858,7 +871,7 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
 
         vector<double> dd0, dd1;
         auto [new_cost, new_ot] = evaluate_full(tmp[0], tmp[1], dd0, dd1);
-        double d = new_cost - cur_cost;
+        double d = weighted_score(new_cost, new_ot, overtime_penalty) - cur_score;
         if (d > 0) deltas.push_back(d);
     }
 
@@ -939,14 +952,16 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
         {
             vector<double> nd0, nd1;
             auto [new_cost, new_ot] = evaluate_full(cars[0], cars[1], nd0, nd1);
-            double delta = new_cost - cur_cost;
+            double new_score = weighted_score(new_cost, new_ot, overtime_penalty);
+            double delta = new_score - cur_score;
             bool accept = false;
 
-            if (new_cost < cur_cost - 1e-9)
+            if (new_score < cur_score - 1e-9)
                 accept = true;
-            else if (std::abs(new_cost - cur_cost) <= 1e-9 && new_ot < cur_ot)
+            else if (std::abs(new_score - cur_score) <= 1e-9 &&
+                     better_solution(new_cost, new_ot, cur_cost, cur_ot, overtime_penalty))
                 accept = true;
-            else if (new_cost > cur_cost + 1e-9 && uni(rng) < std::exp(-delta / T))
+            else if (new_score > cur_score + 1e-9 && uni(rng) < std::exp(-delta / T))
                 accept = true;
 
             if (accept)
@@ -954,11 +969,15 @@ void Task5::sa_optimize(CarPlan (&cars)[2])
                 // 接受新解
                 cur_cost  = new_cost;
                 cur_ot    = new_ot;
+                cur_score = new_score;
                 cur_deliv0 = nd0;
                 cur_deliv1 = nd1;
 
-                if (better_solution(new_cost, new_ot, best_cost, best_ot))
+                if (new_score < best_score - 1e-9 ||
+                    (std::abs(new_score - best_score) <= 1e-9 &&
+                     better_solution(new_cost, new_ot, best_cost, best_ot, overtime_penalty)))
                 {
+                    best_score = new_score;
                     best_cost = new_cost;
                     best_ot = new_ot;
                     best_cars[0] = cars[0];
@@ -1033,7 +1052,7 @@ Task5Result Task5::solve()
         vector<double> deliv0, deliv1;
         auto [cost, ot] = evaluate_full(cars_arr[0], cars_arr[1], deliv0, deliv1);
 
-        if (!have_best || better_solution(cost, ot, best_total_cost, best_total_ot))
+        if (!have_best || better_solution(cost, ot, best_total_cost, best_total_ot, overtime_penalty))
         {
             have_best = true;
             best_total_cost = cost;
